@@ -85,8 +85,8 @@ Card = namedtuple('Card', (
 def read_allsets(filename):
 
     # Load JSON to a dict/list structure
-    with open(filename, 'rb') as f:
-        sets_ = json.load(f)
+    with open(filename, 'r') as f:
+        sets_ = json.load(f, object_pairs_hook = OrderedDict)
 
     # Extract relevant features from the card dicts and store them
     # as list of namedtuples
