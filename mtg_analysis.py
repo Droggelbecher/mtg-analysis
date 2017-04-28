@@ -97,6 +97,10 @@ def plot_coef_matrix(columns, feature_names, bias, coefs):
         return t.capitalize()
 
     print(np.arange(len(feature_names)), feature_names)
+
+    ax.xaxis.set_label_position('top')
+    ax.xaxis.tick_top()
+
     plt.yticks(np.arange(len(feature_names) + 1) + 0.5, reversed(['(Bias)'] + [rename_feature(f) for f in feature_names]))
     plt.xticks(np.arange(len(columns)) + 0.5, [rename_target(t) for t in columns], rotation = 'vertical')
     plt.subplots_adjust(bottom=0.25)
