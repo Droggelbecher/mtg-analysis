@@ -9,6 +9,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
+import numpy as np
 
 import jsonutil
 from plot import plot_pca_2d, plot_pca_3d
@@ -27,11 +28,21 @@ ignore = set([
     # We know already its a creature...
     'is_creature', 'is_land', 'is_planeswalker', 'is_sorcery', 'is_instant', 'has_unblockable', 'loyalty',
     ])
+#x_columns = [x for x in all_columns if x not in targets and x not in ignore]
+
+
+def preprocess_dataframe(df):
+    df = df.apply(pd.to_numeric)
+    df['date'] /= (365 * 24 * 60 * 60 * 1000000000.0)
+    df['date'] = -df['date'] + 48.0
+    df = df.astype(float)
+    return df
+
 
 def plot(df, names):
     import matplotlib.pyplot as plt
-    df = df.apply(pd.to_numeric)
-    df = df.astype(float) # converts bools to floats, needed for radviz
+    #df = df.apply(pd.to_numeric)
+    #df = df.astype(float) # converts bools to floats, needed for radviz
 
     # Takes forever for this dataset and shows way to much data to see anything
     sys.stderr.write("please stand by while computing scatter matrix...\n")
@@ -46,7 +57,7 @@ def analyze_components(df, names):
     """
     Do some data visualization.
     """
-    df = df.apply(pd.to_numeric)
+    #df = df.apply(pd.to_numeric)
     X = df.values
     X = StandardScaler().fit_transform(X)
     pca = PCA()
@@ -105,18 +116,12 @@ def plot_coef_matrix(columns, feature_names, bias, coefs):
     plt.xticks(np.arange(len(columns)) + 0.5, [rename_target(t) for t in columns], rotation = 'vertical')
     plt.subplots_adjust(bottom=0.25)
     #plt.show()
-    plt.savefig('coefficients.png')
+    plt.savefig('coefficients.png', bbox_inches='tight')
 
 
 def print_ridge_coefs(df, names):
-    df = df.apply(pd.to_numeric)
-
-    df['date'] /= (365 * 24 * 60 * 60 * 1000000000.0)
-    df['date'] = -df['date'] + 48.0
-
     all_columns = df.columns.values
-    #x_columns = sorted([x for x in all_columns if x not in targets and x not in ignore], reverse = True)
-    x_columns = [x for x in all_columns if x not in targets and x not in ignore]
+    x_columns = sorted([x for x in all_columns if x not in targets and x not in ignore], reverse = True)
     X = df[x_columns].values
     Y = df[targets].values
 
@@ -149,6 +154,41 @@ def print_ridge_coefs(df, names):
 
     for t in titles: print('=' * len(t) + ' ', end = '')
     print()
+
+def print_by_score(df, names):
+    model = Ridge(alpha = 1.0)
+
+    # score & predict
+    all_columns = df.columns.values
+    x_columns = sorted([x for x in all_columns if x not in targets and x not in ignore])
+    X = df[x_columns].values
+    Y = df[targets].values
+    model.fit(X, Y)
+    Y2 = model.predict(X)
+
+    # Manually "score" each sample by distance
+    losses = [ abs(cmc - p[0]) for cmc, p in zip(df['cmc'], Y2) ]
+    #print('scores', scores)
+
+    # sort everything by score
+    #     TODO
+    ind = np.argsort(losses)
+    losses = np.array(losses)[ind]
+    #print(names, ind)
+    names = np.array(names)[ind]
+    df = pd.DataFrame(df.values[ind], columns = df.columns)
+    Y2 = Y2[ind]
+
+    print("=" * 30 + " ====== === ======")
+    print("Name" + " " * 26 + " loss   CMC pred.")
+    print("=" * 30 + " ====== === ======")
+    for name, loss, cmc, y in zip(names[:10], losses, df['cmc'], Y2):
+        print("{:30s} {:5.2f} {:4d} {:5.2f}".format(name, loss, int(cmc), y[0]))
+    print("...")
+    I = -10
+    for name, loss, cmc, y in zip(names[I:], losses[I:], df['cmc'][I:], Y2[I:]):
+        print("{:30s} {:5.2f} {:4d} {:5.2f}".format(name, loss, int(cmc), y[0]))
+    print("=" * 30 + " ====== === ======")
 
 
 def evaluate_regressors(df, names):
@@ -201,12 +241,13 @@ def evaluate_regressors(df, names):
 
     df = df.apply(pd.to_numeric)
     all_columns = df.columns.values
-    x_columns = [x for x in all_columns if x not in targets]
+    x_columns = sorted([x for x in all_columns if x not in targets and x not in ignore])
     X = df[x_columns].values
     Y = df[targets].values
 
     regressor_scores = []
     for regressor in regressors:
+        print(regressor)
         scores = []
         for train_index, test_index in KFold(10).split(X):
             X_train, X_test = X[train_index], X[test_index]
@@ -224,10 +265,12 @@ def evaluate_regressors(df, names):
 
 if __name__ == '__main__':
     df, names = jsonutil.read_allsets(sys.argv[1])
+    df = preprocess_dataframe(df)
     #plot(df, names)
     #analyze_components(df, names)
     #r = evaluate_regressors(df, names)
     #print(r)
     print_ridge_coefs(df, names)
+    #print_by_score(df, names)
 
 
