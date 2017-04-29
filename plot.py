@@ -1,5 +1,6 @@
 
 from matplotlib import pyplot as plt
+from matplotlib import cm
 from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d import proj3d
@@ -8,7 +9,19 @@ import numpy as np
 
 from plot_annotator import PlotAnnotator
 
-def plot_pca_2d(Xtrans, pca_components, labels = None, pointlabels = None):
+
+def plot_pca_multi_2d(Xtrans, pca_components, filename_base, dimensions = 3, labels = None, pointlabels = None):
+    for i, c in enumerate(np.linspace(0, 1, dimensions)):
+        plot_pca_2d(
+            Xtrans[:, i:(i+2)],
+            pca_components[i:(i+2)],
+            filename_base + str(i),
+            labels = labels,
+            pointlabels = pointlabels,
+            color = cm.spectral(c)
+            )
+
+def plot_pca_2d(Xtrans, pca_components, filename_base, labels = None, pointlabels = None, color = 'blue'):
     """
     Xtrans: matrix transformed by the PCA
     pca_components: PCA vectors (pca.components_)
@@ -21,8 +34,12 @@ def plot_pca_2d(Xtrans, pca_components, labels = None, pointlabels = None):
     if labels is None:
         labels = ['x{}'.format(i) for i in range(pca_compnonets.shape[1])]
 
+    plt.clf()
 
-    plt.scatter(Xtrans[:, 0], Xtrans[:, 1], marker = 'o', s = 0.5)
+    plt.gcf().set_size_inches(20, 15)
+
+    plt.scatter(Xtrans[:, 0], Xtrans[:, 1], marker = 'o', s = 0.5, color = color)
+    ax = plt.gca()
 
     # Now draw the nice arrows
     # rows of pca.components_ are the individual components, columns
@@ -33,13 +50,28 @@ def plot_pca_2d(Xtrans, pca_components, labels = None, pointlabels = None):
         if LA.norm(feature[:2]) < (arrow_scale / 10.0 ):
             continue
 
-        plt.arrow(0, 0, feature[0], feature[1], color = 'k', head_width = arrow_scale * 0.01, head_length = arrow_scale * 0.01, alpha = 0.5)
-        plt.text(feature[0] * 1.15, feature[1] * 1.15, label, color = 'k', ha = 'center', va = 'center')
+        plt.arrow(0, 0, feature[0], feature[1],
+            color = 'k', head_width = arrow_scale * 0.01,
+            head_length = arrow_scale * 0.01, alpha = 0.5)
+
+        sp0 = ax.transData.transform_point((0, 0))
+        sp = ax.transData.transform_point(feature[:2])
+
+        angle = np.arctan2(sp[1] - sp0[1], sp[0] - sp0[0]) * 180.0 / np.pi
+        s = 1.5
+        plt.text(feature[0] * s, feature[1] * s, label,
+            color = 'k', ha = 'left', va = 'bottom',
+            rotation = angle, rotation_mode = 'anchor')
+
 
     plt.xlabel('PC0')
     plt.ylabel('PC1')
+    plt.axis('off')
 
-    plt.show()
+    print('creating: {}'.format(filename_base + '.png'))
+    plt.savefig(filename_base + '.png', bbox_inches = 'tight')
+
+    #plt.show()
 
 
 class Arrow3D(FancyArrowPatch):
@@ -76,17 +108,11 @@ def plot_pca_3d(Xtrans, pca_components, labels = None, pointlabels = None):
     colors = np.random.rand(Xtrans.shape[0])
     ax.scatter(Xtrans[:, 0], Xtrans[:, 1], Xtrans[:, 2], c = colors, alpha = 0.5, gid = np.arange(Xtrans.shape[0]), picker = True)
 
-    #if pointlabels:
-        #for pos, label in zip(Xtrans, pointlabels):
-            #ax.text(pos[0], pos[1], pos[2], label, color = 'k',alpha = 0.5)
-
-
     # Now draw the nice arrows
     # rows of pca.components_ are the individual components, columns
     # are features
     for feature, label in zip(pca_components.T * arrow_scale, labels):
 
-        #print(LA.norm(feature[:2]))
         if LA.norm(feature[:2]) < (arrow_scale / 10.0 ):
             continue
 
@@ -95,16 +121,12 @@ def plot_pca_3d(Xtrans, pca_components, labels = None, pointlabels = None):
             color = 'k',
             arrowstyle = '->',
             mutation_scale = 20,
-            #head_width = arrow_scale * 0.01, head_length = arrow_scale * 0.01,
             alpha = 0.5)
         ax.add_artist(a)
         ax.text(feature[0] * 1.15, feature[1] * 1.15, feature[2] * 1.15, label, color = 'k', ha = 'center', va = 'center')
 
     annotator = PlotAnnotator(ax, pointlabels)
-
-    #fig.canvas.mpl_connect('motion_notify_event', annotator)
     fig.canvas.mpl_connect('pick_event', annotator)
-
     plt.show()
 
 

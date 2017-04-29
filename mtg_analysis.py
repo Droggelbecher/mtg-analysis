@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 
 import jsonutil
-from plot import plot_pca_2d, plot_pca_3d
+from plot import plot_pca_2d, plot_pca_3d, plot_pca_multi_2d
 
 # target columns that we want to learn to predict
 targets = [
@@ -28,10 +28,12 @@ ignore = set([
     # We know already its a creature...
     'is_creature', 'is_land', 'is_planeswalker', 'is_sorcery', 'is_instant', 'has_unblockable', 'loyalty',
     ])
-#x_columns = [x for x in all_columns if x not in targets and x not in ignore]
 
 
 def preprocess_dataframe(df):
+    """
+    Convert dataframe to numeric, convert date column to "years old" meaning
+    """
     df = df.apply(pd.to_numeric)
     df['date'] /= (365 * 24 * 60 * 60 * 1000000000.0)
     df['date'] = -df['date'] + 48.0
@@ -40,9 +42,10 @@ def preprocess_dataframe(df):
 
 
 def plot(df, names):
+    """
+    Do a simple plot of the data in df.
+    """
     import matplotlib.pyplot as plt
-    #df = df.apply(pd.to_numeric)
-    #df = df.astype(float) # converts bools to floats, needed for radviz
 
     # Takes forever for this dataset and shows way to much data to see anything
     sys.stderr.write("please stand by while computing scatter matrix...\n")
@@ -55,18 +58,21 @@ def plot(df, names):
 
 def analyze_components(df, names):
     """
-    Do some data visualization.
+    Do a PCA and visualize the result of that.
     """
-    #df = df.apply(pd.to_numeric)
     X = df.values
     X = StandardScaler().fit_transform(X)
     pca = PCA()
     pca.fit(X)
     Xtrans = pca.transform(X)
-    plot_pca_3d(Xtrans, pca.components_, df.columns.values, pointlabels = names)
+    plot_pca_multi_2d(Xtrans, pca.components_, 'pca2d', 3, df.columns.values, pointlabels = names)
 
 
 def plot_coef_matrix(columns, feature_names, bias, coefs):
+    """
+    Plot the coefficient matrix:
+    How much does each feature "cost" in terms of CMC and devotion?
+    """
     import matplotlib.pyplot as plt
     import numpy as np
     from numpy.ma import masked_array
@@ -116,10 +122,13 @@ def plot_coef_matrix(columns, feature_names, bias, coefs):
     plt.xticks(np.arange(len(columns)) + 0.5, [rename_target(t) for t in columns], rotation = 'vertical')
     plt.subplots_adjust(bottom=0.25)
     #plt.show()
-    plt.savefig('coefficients.png', bbox_inches='tight')
+    plt.savefig('coefficients.png')
 
 
 def print_ridge_coefs(df, names):
+    """
+    Print linear coefficients of ridge regression to stdout.
+    """
     all_columns = df.columns.values
     x_columns = sorted([x for x in all_columns if x not in targets and x not in ignore], reverse = True)
     X = df[x_columns].values
@@ -156,6 +165,9 @@ def print_ridge_coefs(df, names):
     print()
 
 def print_by_score(df, names):
+    """
+    Ridge regression: Print very good and very bad scoring cards.
+    """
     model = Ridge(alpha = 1.0)
 
     # score & predict
@@ -168,13 +180,10 @@ def print_by_score(df, names):
 
     # Manually "score" each sample by distance
     losses = [ abs(cmc - p[0]) for cmc, p in zip(df['cmc'], Y2) ]
-    #print('scores', scores)
 
     # sort everything by score
-    #     TODO
     ind = np.argsort(losses)
     losses = np.array(losses)[ind]
-    #print(names, ind)
     names = np.array(names)[ind]
     df = pd.DataFrame(df.values[ind], columns = df.columns)
     Y2 = Y2[ind]
@@ -192,6 +201,9 @@ def print_by_score(df, names):
 
 
 def evaluate_regressors(df, names):
+    """
+    Compare a number of regressors, return their R2 scores.
+    """
     regressors = [
         make_pipeline(
             StandardScaler(),
@@ -266,11 +278,12 @@ def evaluate_regressors(df, names):
 if __name__ == '__main__':
     df, names = jsonutil.read_allsets(sys.argv[1])
     df = preprocess_dataframe(df)
+    print('df.shape = {}'.format(df.shape))
     #plot(df, names)
-    #analyze_components(df, names)
+    analyze_components(df, names)
     #r = evaluate_regressors(df, names)
     #print(r)
-    print_ridge_coefs(df, names)
+    #print_ridge_coefs(df, names)
     #print_by_score(df, names)
 
 

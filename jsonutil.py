@@ -183,13 +183,6 @@ def read_allsets(filename):
                 d['abs_devotion_' + k] = v 
                 d['rel_devotion_' + k] = v / d['cmc'] if d['cmc'] else 0
 
-            # Colors
-
-            #colors = set(card.get('colors', ()))
-            #assert colors.issubset(set(COLORS)), colors
-            #for color in colors:
-                #d['is_' + color.lower()] = True
-
             # Types
 
             assert set(card['types']).issubset(set(CARD_TYPES)), card['types']
