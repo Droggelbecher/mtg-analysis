@@ -5,7 +5,7 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression, Ridge, LogisticRegression
 from sklearn.model_selection import train_test_split, KFold, LeaveOneOut
 from sklearn.neural_network import MLPRegressor
-from sklearn.pipeline import make_pipeline
+from sklearn.pipeline import make_pipeline, Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
@@ -68,7 +68,7 @@ def analyze_components(df, names):
     plot_pca_multi_2d(Xtrans, pca.components_, 'pca2d', 3, df.columns.values, pointlabels = names)
 
 
-def plot_coef_matrix(columns, feature_names, bias, coefs):
+def plot_coef_matrix(columns, feature_names, bias, coefs, model_name):
     """
     Plot the coefficient matrix:
     How much does each feature "cost" in terms of CMC and devotion?
@@ -90,18 +90,20 @@ def plot_coef_matrix(columns, feature_names, bias, coefs):
     fig, ax = plt.subplots(figsize = (20, 20))
     ax.set_xlim((0, len(bias)))
 
-    print('--')
-    print(coefs.T[:3])
-    print('--')
+    #print('--')
+    #print(coefs.T[:3])
+    #print('--')
 
     coefs_w_bias = np.vstack((bias, coefs))
 
     for i, (coef, color) in enumerate(zip(coefs_w_bias.T, colormaps)):
-        print('col {}: {}'.format(i, coef))
+        #print('col {}: {}'.format(i, coef))
+        avg = sum(coef) / len(coef)
         pa = ax.imshow([[x] for x in coef], extent = (i, i + 1, 0, len(coef)), interpolation='nearest', cmap = color, origin='upper')
         for j, v in enumerate(coef):
-            print('  {}'.format(v))
-            plt.text(i + .1, len(coef) - 1 - j + .3, '{:3.2f}'.format(v), fontsize = 8, color = 'black' if v <= .5 else 'white')
+            #print('  {}'.format(v))
+            plt.text(i + .1, len(coef) - 1 - j + .3, '{:3.2g}'.format(v),
+                fontsize = 6, color = 'black' if v <= avg else 'white')
 
     def rename_feature(f):
         if f.startswith('has_'): f = f[4:]
@@ -113,7 +115,7 @@ def plot_coef_matrix(columns, feature_names, bias, coefs):
             t = t[13:]
         return t.capitalize()
 
-    print(np.arange(len(feature_names)), feature_names)
+    #print(np.arange(len(feature_names)), feature_names)
 
     ax.xaxis.set_label_position('top')
     ax.xaxis.tick_top()
@@ -122,7 +124,8 @@ def plot_coef_matrix(columns, feature_names, bias, coefs):
     plt.xticks(np.arange(len(columns)) + 0.5, [rename_target(t) for t in columns], rotation = 'vertical')
     plt.subplots_adjust(bottom=0.25)
     #plt.show()
-    plt.savefig('coefficients.png')
+    plt.savefig('coefficients_{}.png'.format(model_name), bbox_inches='tight')
+    plt.close(fig)
 
 
 def print_ridge_coefs(df, names):
@@ -164,11 +167,49 @@ def print_ridge_coefs(df, names):
     for t in titles: print('=' * len(t) + ' ', end = '')
     print()
 
+def output_regressor(model_name, regressor, x_columns):
+    """
+    Print linear coefficients of ridge regression to stdout.
+    """
+    coef_ = regressor.coef_
+
+    print("-" * len(model_name))
+    print(model_name)
+    print("-" * len(model_name))
+
+    plot_coef_matrix(targets, x_columns, regressor.intercept_, regressor.coef_.T, model_name)
+    titles = ['Feature           '] + [t + '    ' for t in targets]
+
+    for t in titles: print('=' * len(t) + ' ', end = '')
+    print()
+    for t in titles: print(t + ' ', end = '')
+    print()
+    for t in titles: print('=' * len(t) + ' ', end = '')
+    print()
+
+    P = 2
+    print('{s:{width}s} '.format(s = '(bias)', width = len(titles[0])), end = '')
+    for t, v in zip(titles[1:], regressor.intercept_):
+        print('{v:+{width}.{prec}f} '.format(v = v, width = len(t) - 2, prec = min(P, len(t) - 3)), end = '')
+    print()
+
+    for feature, coef in zip(x_columns, coef_.T):
+        if feature in ignore: continue
+        print('{s:{width}s} '.format(s = feature, width = len(titles[0])), end = '')
+        for t, v in zip(titles[1:], coef):
+            print('{v:+{width}.{prec}f} '.format(v = v, width = len(t) - 2, prec = min(P, len(t) - 3)), end = '')
+        print()
+
+    for t in titles: print('=' * len(t) + ' ', end = '')
+    print()
+
+
 def print_by_score(df, names):
     """
     Ridge regression: Print very good and very bad scoring cards.
     """
-    model = Ridge(alpha = 1.0)
+    #model = Ridge(alpha = 1.0)
+    model = LinearRegression()
 
     # score & predict
     all_columns = df.columns.values
@@ -188,15 +229,34 @@ def print_by_score(df, names):
     df = pd.DataFrame(df.values[ind], columns = df.columns)
     Y2 = Y2[ind]
 
+    columns = (
+        ('Name',  '{:30s}', names),
+        ('loss',  '{:5.2f}', losses),
+        ('CMC',   '{:4f}', list(df['cmc'])),
+        ('pred.', '{:5.2f}', Y2[:, 0]),
+        ('pwr',   '{:4.0f}', list(df['power'])),
+        )
+
+
+    def print_range(i = None, j = None):
+        colnames, fstrings, values = zip(*columns)
+        fstr = ' '.join(fstrings)
+        for row in list(zip(*values))[i:j]:
+            print(fstr.format(*row))
+
+    print(str(model))
     print("=" * 30 + " ====== === ======")
     print("Name" + " " * 26 + " loss   CMC pred.")
     print("=" * 30 + " ====== === ======")
-    for name, loss, cmc, y in zip(names[:10], losses, df['cmc'], Y2):
-        print("{:30s} {:5.2f} {:4d} {:5.2f}".format(name, loss, int(cmc), y[0]))
+
+    print_range(None, 10)
     print("...")
-    I = -10
-    for name, loss, cmc, y in zip(names[I:], losses[I:], df['cmc'][I:], Y2[I:]):
-        print("{:30s} {:5.2f} {:4d} {:5.2f}".format(name, loss, int(cmc), y[0]))
+    i = int(len(names) / 2) - 5
+    j = i + 10
+    print_range(i, j)
+    print("...")
+    print_range(-100, None)
+
     print("=" * 30 + " ====== === ======")
 
 
@@ -205,27 +265,27 @@ def evaluate_regressors(df, names):
     Compare a number of regressors, return their R2 scores.
     """
     regressors = [
-        make_pipeline(
-            StandardScaler(),
-            LinearRegression(),
-            ),
+        ('linear', Pipeline(steps=[
+            #('scaler', StandardScaler()),
+            ('regressor', LinearRegression()),
+            ])),
 
-        make_pipeline(
-            StandardScaler(),
-            Ridge(alpha = 1.0),
-            ),
+        ('ridge', Pipeline(steps=[
+            #('scaler', StandardScaler()),
+            ('regressor', Ridge(alpha = 1.0)),
+            ])),
 
-        make_pipeline(
-            StandardScaler(),
-            PolynomialFeatures(2, interaction_only = True),
-            Ridge(alpha = 1.0)
-            ),
+        #('ridge_p2', Pipeline(steps=[
+            #('scaler', StandardScaler()),
+            #('feature_map', PolynomialFeatures(2, interaction_only = True)),
+            #('regressor', Ridge(alpha = 1.0))
+            #])),
 
-        make_pipeline(
-            StandardScaler(),
-            PolynomialFeatures(3, interaction_only = True),
-            Ridge(alpha = 1.0)
-            ),
+        #('ridge_p3', Pipeline(steps=[
+            #('scaler', StandardScaler()),
+            #('feature_map', PolynomialFeatures(3, interaction_only = True)),
+            #('regressor', Ridge(alpha = 1.0))
+            #])),
 
         #make_pipeline(
             #StandardScaler(),
@@ -258,7 +318,7 @@ def evaluate_regressors(df, names):
     Y = df[targets].values
 
     regressor_scores = []
-    for regressor in regressors:
+    for name, regressor in regressors:
         print(regressor)
         scores = []
         for train_index, test_index in KFold(10).split(X):
@@ -266,8 +326,17 @@ def evaluate_regressors(df, names):
             Y_train, Y_test = Y[train_index], Y[test_index]
 
             regressor.fit(X_train, Y_train)
+
             score = regressor.score(X_test, Y_test)
             scores.append(score)
+
+        regressor.fit(X, Y)
+        output_regressor(
+            model_name = name,
+            regressor = regressor.named_steps['regressor'],
+            x_columns = x_columns,
+        )
+
         regressor_scores.append(sum(scores) / len(scores))
 
     return regressor_scores
@@ -280,10 +349,10 @@ if __name__ == '__main__':
     df = preprocess_dataframe(df)
     print('df.shape = {}'.format(df.shape))
     #plot(df, names)
-    analyze_components(df, names)
-    #r = evaluate_regressors(df, names)
-    #print(r)
+    #analyze_components(df, names)
+    r = evaluate_regressors(df, names)
+    print(r)
     #print_ridge_coefs(df, names)
-    #print_by_score(df, names)
+    print_by_score(df, names)
 
 
