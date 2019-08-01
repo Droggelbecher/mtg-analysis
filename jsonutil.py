@@ -20,12 +20,13 @@ COLOR_DECODE = {
     'G': 'green',
     'R': 'red',
     'W': 'white',
+    'S': 'snow',
     }
 
 COLORS = tuple(COLOR_DECODE.values())
 
 
-RARITIES = ('Common', 'Uncommon', 'Rare', 'Mythic Rare', 'Special')
+RARITIES = ('common', 'uncommon', 'rare', 'mythic', 'special')
 CARD_TYPES = ('Creature', 'Artifact', 'Enchantment', 'Sorcery', 'Instant', 'Land', 'Planeswalker')
 PROPERTIES = (
     'deathtouch',
@@ -61,7 +62,7 @@ Card = namedtuple('Card', (
     'is_common',
     'is_uncommon',
     'is_rare',
-    'is_mythic_rare',
+    'is_mythic',
     'is_special',
     'is_creature',
     'is_artifact',
@@ -129,6 +130,9 @@ def read_allsets(filename):
                     if ' ' not in x:
                         logger.debug('ignoring "{}" because property "{}" not understood.'.format(card['name'], x))
                 continue
+
+            # print(card['name'])
+
             for p in properties:
                 d['has_' + p.lower().replace(' ', '_')] = True
 
@@ -136,11 +140,14 @@ def read_allsets(filename):
 
             d['date'] = date
             d['cmc'] = int(card.get('cmc', 0))
-            d['power'] = int(card.get('power', 0))
+
+            pwr = card.get('power', 0)
+            d['power'] = 99999 if pwr == '∞' else int(pwr)
             d['toughness'] = int(card.get('toughness', 0))
             d['loyalty'] = int(card.get('loyalty', 0))
 
             # Rarity
+            card['rarity'] = card['rarity'].lower()
 
             assert card['rarity'] in RARITIES, card['rarity']
             d['is_' + identifier(card['rarity'])] = True
