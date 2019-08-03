@@ -23,7 +23,10 @@ ignore = set([
     'is_creature', 'is_land', 'is_planeswalker', 'is_sorcery', 'is_instant', 'has_unblockable', 'loyalty',
     ])
 
-def augment(X, Y):
+# TODO: rewrite this to work on the dataframe so it can work better with column- and card names
+def augment(X, Y, names):
+
+    assert len(names) == len(X) == len(Y)
 
     # Randomly increase/decrease devotion to one color
     devotion_cols = np.array(list(devotion_indices))
@@ -32,23 +35,30 @@ def augment(X, Y):
     Xinc = X.copy()
     Xinc[np.arange(0, len(X)),inc_cols] += 1
     Xinc[cmc_index] += 1
+    names_inc = [n + '+' for n in names]
+    assert len(names_inc) == len(Xinc)
 
     # dec_cols = np.random.choice(devotion_cols, len(X))
     Xdec = X.copy()
     # Xdec[np.arange(0, len(X)),dec_cols] -= 1
     Xdec[cmc_index] -= 1
+    names_dec = [n + '-' for n in names]
 
-    for i in np.arange(len(X)):
+    for i, n in zip(np.arange(len(X)), names):
         # print(i, len(X))
         if np.all(Xdec[:, devotion_cols][i] == 0):
+            # Has 0 devotion to anything, there is nothing to decrease. Set the CMC back
+            # and just repeat the original once more
             Xdec[i, cmc_index] += 1
             continue
+        # names_dec.append(n + '-')
 
         col = np.random.randint(0, len(devotion_cols))
         while Xdec[i, devotion_cols[col]] == 0:
             col = np.random.randint(0, len(devotion_cols))
             # print(col, Xdec[:,devotion_cols][i])
         Xdec[i, devotion_cols[col]] -= 1
+    assert len(names_dec) == len(Xdec)
 
 
     Yinc = np.ones(len(Xinc))
@@ -56,7 +66,8 @@ def augment(X, Y):
 
     return (
         np.vstack((X, Xinc, Xdec)),
-        np.hstack((Y, Yinc, Ydec))
+        np.hstack((Y, Yinc, Ydec)),
+        list(names) + list(names_inc) + list(names_dec)
     )
 
 
@@ -106,10 +117,10 @@ def train_model(df, names):
         split = int(len(indices) * (1.0 - test_size))
         train_indices, test_indices = indices[:split], indices[split:]
         # print(train_indices, test_indices)
-        X_train, Y_train = X[train_indices], Y[train_indices]
+        X_train, Y_train, names_train = X[train_indices], Y[train_indices], np.array(names)[train_indices]
         X_test, Y_test, names_test = X[test_indices], Y[test_indices], np.array(names)[test_indices]
 
-    X_train_a, Y_train_a = augment(X_train, Y_train)
+    X_train_a, Y_train_a, names_train = augment(X_train, Y_train, names_train)
 
     model = get_model()
 
@@ -123,8 +134,8 @@ def train_model(df, names):
 def print_by_score(df, names):
     model, X_test, Y_test, names_test = train_model(df, names)
 
-    X_test_a, Y_test_a = augment(X_test, Y_test)
-    names_a = list(names_test) + [str(n) + '+' for n in names_test] + [str(n) + '-' for n in names_test]
+    X_test_a, Y_test_a, names_a = augment(X_test, Y_test, names_test)
+    # names_a = list(names_test) + [str(n) + '+' for n in names_test] + [str(n) + '-' for n in names_test]
 
     Y2_a = model.predict(X_test_a)[:, 0]
     losses = (Y2_a - Y_test_a) ** 2
