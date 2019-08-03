@@ -114,8 +114,8 @@ def train_model(df, names):
     model = get_model()
 
     model.load_weights('model.h5')
-    # model.fit(X_train_a, Y_train_a, epochs=1000)
-    # model.save_weights('model.h5')
+    #model.fit(X_train_a, Y_train_a, epochs=10000)
+    #model.save_weights('model.h5')
 
     return model, X_test, Y_test, names_test
 
