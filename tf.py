@@ -23,52 +23,54 @@ ignore = set([
     'is_creature', 'is_land', 'is_planeswalker', 'is_sorcery', 'is_instant', 'has_unblockable', 'loyalty',
     ])
 
-# TODO: rewrite this to work on the dataframe so it can work better with column- and card names
-def augment(X, Y, names):
 
-    assert len(names) == len(X) == len(Y)
+def augment(df, Y, names):
+    devotion_cols = [
+        'abs_devotion_red', 'abs_devotion_green', 'abs_devotion_white', 'abs_devotion_blue', 'abs_devotion_black'
+    ]
 
-    # Randomly increase/decrease devotion to one color
-    devotion_cols = np.array(list(devotion_indices))
+    cmc_col = df.columns.get_loc('cmc')
 
-    inc_cols = np.random.choice(devotion_cols, len(X))
-    Xinc = X.copy()
-    Xinc[np.arange(0, len(X)),inc_cols] += 1
-    Xinc[cmc_index] += 1
-    names_inc = [n + '+' for n in names]
-    assert len(names_inc) == len(Xinc)
+    df_inc = df.copy()
+    df_inc.iloc[:, cmc_col] += 1
+    inc_cols = np.random.choice(devotion_cols, len(df_inc))
+    inc_cols_i = [df.columns.get_loc(c) for c in inc_cols]
+    df_inc.iloc[np.arange(0, len(df_inc)), inc_cols_i] += 1
+    names_inc = []
+    for i, (c,n) in enumerate(zip(inc_cols, names)):
+        names_inc.append(n + '+' + c[len('abs_devotion_')])
+    Yinc = np.array(Y + 1., copy=True)
 
-    # dec_cols = np.random.choice(devotion_cols, len(X))
-    Xdec = X.copy()
-    # Xdec[np.arange(0, len(X)),dec_cols] -= 1
-    Xdec[cmc_index] -= 1
-    names_dec = [n + '-' for n in names]
+    assert len(df_inc) == len(Yinc) == len(names_inc)
 
-    for i, n in zip(np.arange(len(X)), names):
-        # print(i, len(X))
-        if np.all(Xdec[:, devotion_cols][i] == 0):
-            # Has 0 devotion to anything, there is nothing to decrease. Set the CMC back
-            # and just repeat the original once more
-            Xdec[i, cmc_index] += 1
+    df_dec = df.copy()
+    names_dec = []
+    df_dec.iloc[:, cmc_col] -= 1
+    Ydec = np.array(Y - 1., copy=True)
+    for i, n in enumerate(names):
+        row = df_dec.iloc[i]
+        if np.all(row[devotion_cols] == 0):
+            names_dec.append(n + '-')
+            df_dec.iloc[i, cmc_col] += 1
+            Ydec[i] += 1
             continue
-        # names_dec.append(n + '-')
-
         col = np.random.randint(0, len(devotion_cols))
-        while Xdec[i, devotion_cols[col]] == 0:
+        while row[col] == 0:
             col = np.random.randint(0, len(devotion_cols))
-            # print(col, Xdec[:,devotion_cols][i])
-        Xdec[i, devotion_cols[col]] -= 1
-    assert len(names_dec) == len(Xdec)
+        c = devotion_cols[col]
+        ci = df_dec.columns.get_loc(c)
+        df_dec.iloc[i, ci] -= 1
 
-
-    Yinc = np.ones(len(Xinc))
-    Ydec = -Yinc
+        names_dec.append(n + '-' + c[len('abs_devotion_'):])
+    
+    assert len(df_dec) == len(Ydec) == len(names_dec)
 
     return (
-        np.vstack((X, Xinc, Xdec)),
+        pd.concat([df, df_inc, df_dec]),
         np.hstack((Y, Yinc, Ydec)),
-        list(names) + list(names_inc) + list(names_dec)
+        list(names) + names_inc + names_dec
     )
+
 
 
 def get_model():
@@ -87,54 +89,53 @@ def get_model():
     return model
 
 
+def train_test_split(n, test_size=.1):
+    indices = np.arange(n)
+    np.random.shuffle(indices)
+    split = int(len(indices) * (1.0 - test_size))
+    train_indices, test_indices = indices[:split], indices[split:]
+    return train_indices, test_indices
+
+def df_to_np(df):
+    dfnp = df.apply(pd.to_numeric)
+    all_columns = dfnp.columns.values
+    x_columns_gt = sorted([x for x in all_columns if x not in ignore], reverse = True)
+    X = dfnp[x_columns_gt].values
+    return X
+
+
 def train_model(df, names):
     test_size = 0.1
+    Y = np.zeros(len(df))
 
-    df = df.apply(pd.to_numeric)
-    all_columns = df.columns.values
-    x_columns_gt = sorted([x for x in all_columns if x not in ignore], reverse = True)
+    train_idx, test_idx = train_test_split(len(df))
+    df_test = df.loc[test_idx]
+    # X_test = df_to_np(df_test)
+    Y_test = Y[test_idx]
+    Y_train = Y[train_idx]
+    names_test = np.array(names)[test_idx]
+    names_train = np.array(names)[train_idx]
 
-    # TODO: This is an ugly crutch, maybe we should do augmentation on the df
-    global devotion_indices
-    global cmc_index
-    devotion_indices = set()
-    for i, col in enumerate(x_columns_gt):
-        if col.startswith('abs_devotion_'):
-            devotion_indices.add(i)
-        elif col == 'cmc':
-            cmc_index = i
-
-
-    X = df[x_columns_gt].values
-    Y = np.zeros(X.shape[0]) # 0 = correct costs
-
-    # Take test set from the unaugmented data,
-    # also store according names
-
-    if True:
-        indices = np.arange(len(X))
-        np.random.shuffle(indices)
-        split = int(len(indices) * (1.0 - test_size))
-        train_indices, test_indices = indices[:split], indices[split:]
-        # print(train_indices, test_indices)
-        X_train, Y_train, names_train = X[train_indices], Y[train_indices], np.array(names)[train_indices]
-        X_test, Y_test, names_test = X[test_indices], Y[test_indices], np.array(names)[test_indices]
-
-    X_train_a, Y_train_a, names_train = augment(X_train, Y_train, names_train)
+    df_train = df.loc[train_idx]
+    df_train_a, Y_train_a, names_train_a = augment(df_train, Y_train, names_train)
+    X_train_a = df_to_np(df_train_a)
 
     model = get_model()
+    model.fit(X_train_a, Y_train_a, epochs=10)
+    model.save_weights('model.h5')
 
-    model.load_weights('model.h5')
-    #model.fit(X_train_a, Y_train_a, epochs=10000)
-    #model.save_weights('model.h5')
+    # model.load_weights('model.h5')
 
-    return model, X_test, Y_test, names_test
+    return model, df_test, Y_test,names_test
 
 
 def print_by_score(df, names):
-    model, X_test, Y_test, names_test = train_model(df, names)
+    model, df_test, Y_test, names_test = train_model(df, names)
 
-    X_test_a, Y_test_a, names_a = augment(X_test, Y_test, names_test)
+    df_test_a, Y_test_a, names_test_a = augment(df_test, Y_test, names_test)
+    X_test_a = df_to_np(df_test_a)
+
+    # X_test_a, Y_test_a, names_a = augment(X_test, Y_test, names_test)
     # names_a = list(names_test) + [str(n) + '+' for n in names_test] + [str(n) + '-' for n in names_test]
 
     Y2_a = model.predict(X_test_a)[:, 0]
@@ -148,7 +149,7 @@ def print_by_score(df, names):
     # print("ind=", ind)
 
     losses = losses[ind]
-    names_a = np.array(names_a)[ind]
+    names_a = np.array(names_test_a)[ind]
     Y2_a = Y2_a[ind]
     Y_test_a = Y_test_a[ind]
 
