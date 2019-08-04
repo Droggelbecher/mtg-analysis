@@ -95,7 +95,7 @@ def read_allsets(filename):
     names = list()
     for k, set_ in sets_.items():
         # The fun editions make all kinds of messy stuff
-        if k in ('UNH', ):
+        if k in ('UNH', 'UST'):
             continue
 
         date = datetime.strptime(set_['releaseDate'], '%Y-%m-%d')
@@ -185,6 +185,9 @@ def read_allsets(filename):
             c = { color: 0 for color in COLORS }
             for color in devotion_colors():
                 c[color] += 1
+
+            if c['snow'] != 0: # Ignore snow mana cards for now
+                continue
 
             for k, v in c.items():
                 d['abs_devotion_' + k] = v 

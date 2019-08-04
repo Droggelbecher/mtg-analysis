@@ -38,7 +38,7 @@ def augment(df, Y, names):
     df_inc.iloc[np.arange(0, len(df_inc)), inc_cols_i] += 1
     names_inc = []
     for i, (c,n) in enumerate(zip(inc_cols, names)):
-        names_inc.append(n + '+' + c[len('abs_devotion_')])
+        names_inc.append(n + '+' + c[len('abs_devotion_'):])
     Yinc = np.array(Y + 1., copy=True)
 
     assert len(df_inc) == len(Yinc) == len(names_inc)
@@ -121,12 +121,14 @@ def train_model(df, names):
     X_train_a = df_to_np(df_train_a)
 
     model = get_model()
-    model.fit(X_train_a, Y_train_a, epochs=10)
-    model.save_weights('model.h5')
+    # model.fit(X_train_a, Y_train_a, epochs=10)
+    # model.save_weights('model.h5')
 
-    # model.load_weights('model.h5')
+    model.load_weights('model.h5')
+    model.summary()
 
-    return model, df_test, Y_test,names_test
+    # return model, df_test, Y_test,names_test
+    return model, df_train, Y_train, names_train
 
 
 def print_by_score(df, names):
@@ -137,6 +139,8 @@ def print_by_score(df, names):
 
     # X_test_a, Y_test_a, names_a = augment(X_test, Y_test, names_test)
     # names_a = list(names_test) + [str(n) + '+' for n in names_test] + [str(n) + '-' for n in names_test]
+
+    print(model.evaluate(X_test_a, Y_test_a))
 
     Y2_a = model.predict(X_test_a)[:, 0]
     losses = (Y2_a - Y_test_a) ** 2
@@ -174,9 +178,9 @@ def print_by_score(df, names):
             print(fstr.format(*row))
 
     print(str(model))
-    print("=" * 30 + " ====== ======")
-    print("Name" + " " * 26 + " loss   pred.")
-    print("=" * 30 + " ====== ======")
+    print("=" * 30 + " ===== ===== ====")
+    print("Name" + " " * 26 + " loss  pred. GT")
+    print("=" * 30 + " ===== ===== ====")
 
     print_range(None, 10)
     print("...")
@@ -186,7 +190,7 @@ def print_by_score(df, names):
     print("...")
     print_range(-100, None)
 
-    print("=" * 30 + " ====== ======")
+    print("=" * 30 + " ===== ===== ====")
 
 np.random.seed(42)
 
