@@ -24,6 +24,8 @@ ignore = set([
     ])
 
 
+x_columns_gt = sorted([x for x in jsonutil.Card._fields if x not in ignore], reverse = True)
+
 def augment(df, Y, names):
     devotion_cols = [
         'abs_devotion_red', 'abs_devotion_green', 'abs_devotion_white', 'abs_devotion_blue', 'abs_devotion_black'
@@ -72,7 +74,6 @@ def augment(df, Y, names):
     )
 
 
-
 def get_model():
     model = tf.keras.models.Sequential([
       tf.keras.layers.Flatten(input_shape=(40,)),
@@ -89,17 +90,43 @@ def get_model():
     return model
 
 
-def train_test_split(n, test_size=.1):
+def tt_split_n(n, test_size=.1):
     indices = np.arange(n)
     np.random.shuffle(indices)
     split = int(len(indices) * (1.0 - test_size))
     train_indices, test_indices = indices[:split], indices[split:]
     return train_indices, test_indices
 
+def tt_split_and_augment(df, names, test_size=.1):
+    train_idx, test_idx = tt_split_n(len(df), test_size=test_size)
+    Y = np.zeros(len(df))
+
+    # split
+
+    df_train = df.loc[train_idx]
+    Y_train = Y[train_idx]
+    names_train = np.array(names)[train_idx]
+
+    df_test = df.loc[test_idx]
+    Y_test = Y[test_idx]
+    names_test = np.array(names)[test_idx]
+
+    # augment
+
+    df_train_a, Y_train_a, names_train_a = augment(df_train, Y_train, names_train)
+    X_train_a = df_to_np(df_train_a)
+
+    df_test_a, Y_test_a, names_test_a = augment(df_test, Y_test, names_test)
+    X_test_a = df_to_np(df_test_a)
+
+    return (
+        X_train_a, Y_train_a, names_train_a,
+        X_test_a, Y_test_a, names_test_a,
+    )
+
+
 def df_to_np(df):
     dfnp = df.apply(pd.to_numeric)
-    all_columns = dfnp.columns.values
-    x_columns_gt = sorted([x for x in all_columns if x not in ignore], reverse = True)
     print("---- x_columns_gt ----")
     for c in x_columns_gt:
         print(c)
@@ -109,53 +136,37 @@ def df_to_np(df):
     return X
 
 
-def train_model(df, names):
-    test_size = 0.1
-    Y = np.zeros(len(df))
-
-    train_idx, test_idx = train_test_split(len(df))
-    df_test = df.loc[test_idx]
-    # X_test = df_to_np(df_test)
-    Y_test = Y[test_idx]
-    Y_train = Y[train_idx]
-    names_test = np.array(names)[test_idx]
-    names_train = np.array(names)[train_idx]
-
-    df_train = df.loc[train_idx]
-    df_train_a, Y_train_a, names_train_a = augment(df_train, Y_train, names_train)
-    X_train_a = df_to_np(df_train_a)
+def train_model(X_train_a, Y_train_a, load_existing=True):
 
     model = get_model()
-    # model.fit(X_train_a, Y_train_a, epochs=10)
-    # model.save_weights('model.h5')
 
-    model.load_weights('model.h5')
+    if load_existing:
+        model.load_weights('model.h5')
+    else:
+        model.fit(X_train_a, Y_train_a, epochs=10)
+        model.save_weights('model.h5')
+
+
     model.summary()
 
-    return model, df_test, Y_test,names_test
+    return model #, df_test, Y_test,names_test
     # return model, df_train, Y_train, names_train
 
 
-def print_by_score(df, names):
-    model, df_test, Y_test, names_test = train_model(df, names)
+def query_oracle():
+    dfq = pd.DataFrame([], columns=x_columns_gt)
 
-    df_test_a, Y_test_a, names_test_a = augment(df_test, Y_test, names_test)
-    X_test_a = df_to_np(df_test_a)
+    dfq.append({
+        'has_flying': 1.
+    })
+    print(dfq)
 
-    # X_test_a, Y_test_a, names_a = augment(X_test, Y_test, names_test)
-    # names_a = list(names_test) + [str(n) + '+' for n in names_test] + [str(n) + '-' for n in names_test]
 
-    print(model.evaluate(X_test_a, Y_test_a))
+def print_by_score(model, X_test_a, Y_test_a, names_test_a):
 
     Y2_a = model.predict(X_test_a)[:, 0]
     losses = (Y2_a - Y_test_a) ** 2
     ind = np.argsort(losses)
-
-    # print("names=", names)
-    # print("Y2=", Y2)
-    # print("Y_test=", Y_test)
-    # print("losses=", losses)
-    # print("ind=", ind)
 
     losses = losses[ind]
     names_a = np.array(names_test_a)[ind]
@@ -203,12 +214,14 @@ if __name__ == '__main__':
     df, names = jsonutil.read_allsets(sys.argv[1])
     df = preprocess_dataframe(df)
     print('df.shape = {}'.format(df.shape))
-    print_by_score(df, names)
-    #plot(df, names)
-    #analyze_components(df, names)
-    # evaluate_model(df, names)
-    #print(r)
-    #print_ridge_coefs(df, names)
-    #print_by_score(df, names)
+
+    (
+        X_train_a, Y_train_a, names_train_a,
+        X_test_a, Y_test_a, names_test_a,
+    ) = tt_split_and_augment(df, names)
+
+    model = train_model(df, names)
+
+    print_by_score(model, X_test_a, Y_test_a, names_test_a)
 
 
