@@ -100,6 +100,11 @@ def df_to_np(df):
     dfnp = df.apply(pd.to_numeric)
     all_columns = dfnp.columns.values
     x_columns_gt = sorted([x for x in all_columns if x not in ignore], reverse = True)
+    print("---- x_columns_gt ----")
+    for c in x_columns_gt:
+        print(c)
+    print("---- /x_columns_gt ----")
+
     X = dfnp[x_columns_gt].values
     return X
 
@@ -127,8 +132,8 @@ def train_model(df, names):
     model.load_weights('model.h5')
     model.summary()
 
-    # return model, df_test, Y_test,names_test
-    return model, df_train, Y_train, names_train
+    return model, df_test, Y_test,names_test
+    # return model, df_train, Y_train, names_train
 
 
 def print_by_score(df, names):
