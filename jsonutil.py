@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import datetime
 import re
+import numpy as np
 import pandas as pd
 import logging
 
@@ -139,7 +140,7 @@ def read_allsets(filename):
             # Get other attributes from card dict
 
             d['date'] = date
-            d['cmc'] = int(card.get('cmc', 0))
+            d['cmc'] = int(card.get('convertedManaCost', 0))
 
             pwr = card.get('power', 0)
             d['power'] = 99999 if pwr == '∞' else int(pwr)

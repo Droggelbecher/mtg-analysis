@@ -25,6 +25,11 @@ ignore = set([
 
 
 x_columns_gt = sorted([x for x in jsonutil.Card._fields if x not in ignore], reverse = True)
+print("---- x_columns_gt ----")
+for c in x_columns_gt:
+    print(c)
+print("---- /x_columns_gt ----")
+
 
 def augment(df, Y, names):
     devotion_cols = [
@@ -56,11 +61,14 @@ def augment(df, Y, names):
             df_dec.iloc[i, cmc_col] += 1
             Ydec[i] += 1
             continue
+
         col = np.random.randint(0, len(devotion_cols))
-        while row[col] == 0:
-            col = np.random.randint(0, len(devotion_cols))
         c = devotion_cols[col]
         ci = df_dec.columns.get_loc(c)
+        while row[ci] == 0:
+            col = np.random.randint(0, len(devotion_cols))
+            c = devotion_cols[col]
+            ci = df_dec.columns.get_loc(c)
         df_dec.iloc[i, ci] -= 1
 
         names_dec.append(n + '-' + c[len('abs_devotion_'):])
@@ -127,11 +135,6 @@ def tt_split_and_augment(df, names, test_size=.1):
 
 def df_to_np(df):
     dfnp = df.apply(pd.to_numeric)
-    print("---- x_columns_gt ----")
-    for c in x_columns_gt:
-        print(c)
-    print("---- /x_columns_gt ----")
-
     X = dfnp[x_columns_gt].values
     return X
 
@@ -143,26 +146,70 @@ def train_model(X_train_a, Y_train_a, load_existing=True):
     if load_existing:
         model.load_weights('model.h5')
     else:
-        model.fit(X_train_a, Y_train_a, epochs=10)
+        model.fit(X_train_a, Y_train_a, epochs=100)
         model.save_weights('model.h5')
 
 
     model.summary()
 
-    return model #, df_test, Y_test,names_test
-    # return model, df_train, Y_train, names_train
+    return model
 
 
-def query_oracle():
-    dfq = pd.DataFrame([], columns=x_columns_gt)
+def dump(df):
+    cols = [
+        'abs_devotion_red',
+        'abs_devotion_blue',
+        'abs_devotion_black',
+        'abs_devotion_white',
+        'abs_devotion_green',
+        'cmc',
+        'has_flying',
+        'date',
+        'power',
+        'toughness',
+    ]
+    print(df[df['has_flying'] == 1.][cols])
 
-    dfq.append({
-        'has_flying': 1.
-    })
-    print(dfq)
+def query_oracle(model):
+    base_ptype = { k: 0. for k in x_columns_gt }
+
+    def row(ptype, k, v):
+        d = base_ptype.copy()
+        d.update(ptype)
+        d[k] = v
+        return d
+
+    def find_best(prop, from_, to, ptype):
+        df = pd.DataFrame([ row(ptype, prop, i) for i in range(from_, to) ], columns=x_columns_gt)
+        X = df_to_np(df)
+        Y = model.predict(X).reshape(-1)
+        i = np.argmin(np.abs(Y))
+        return from_ + i, Y[i]
+
+    for f in (0, 1):
+        print(f"flying: {f}")
+        print("------------------")
+        print()
+
+        for power in range(0, 5):
+            print(f"pwr={power}  ", end='')
+            for toughness in range(1, 5):
+                cmc, y = find_best(
+                    'cmc', 0, 10, {
+                        'has_flying': f,
+                        'power': power,
+                        'toughness': toughness,
+                        'is_common': 1,
+                        'date': 0.224658,
+                    }
+                )
+                print(f'{cmc:1d}({y:+3.2f}) ', end='')
+            print()
 
 
 def print_by_score(model, X_test_a, Y_test_a, names_test_a):
+
+    print('Evaluation:', model.evaluate(X_test_a, Y_test_a))
 
     Y2_a = model.predict(X_test_a)[:, 0]
     losses = (Y2_a - Y_test_a) ** 2
@@ -185,12 +232,7 @@ def print_by_score(model, X_test_a, Y_test_a, names_test_a):
     def print_range(i = None, j = None):
         colnames, fstrings, values = zip(*columns)
         fstr = ' '.join(fstrings)
-        # print("colnames=", colnames)
-        # print("fstrings=", fstrings)
-        # print("values=", values)
         for row in list(zip(*values))[i:j]:
-            # print('fstr=',fstr)
-            # print('row=',row)
             print(fstr.format(*row))
 
     print(str(model))
@@ -215,13 +257,22 @@ if __name__ == '__main__':
     df = preprocess_dataframe(df)
     print('df.shape = {}'.format(df.shape))
 
+    # dump(df)
+
     (
         X_train_a, Y_train_a, names_train_a,
         X_test_a, Y_test_a, names_test_a,
     ) = tt_split_and_augment(df, names)
 
-    model = train_model(df, names)
+    model = train_model(X_train_a, Y_train_a, load_existing=True)
 
+    print("---- Test scores -----")
     print_by_score(model, X_test_a, Y_test_a, names_test_a)
+
+    print("---- Training scores -----")
+    print_by_score(model, X_train_a, Y_train_a, names_train_a)
+
+    query_oracle(model)
+
 
 
