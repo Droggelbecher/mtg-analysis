@@ -249,13 +249,14 @@ def print_by_score(df, names):
     print("Name" + " " * 26 + " loss   CMC pred.")
     print("=" * 30 + " ====== === ======")
 
-    print_range(None, 10)
-    print("...")
-    i = int(len(names) / 2) - 5
-    j = i + 10
-    print_range(i, j)
-    print("...")
-    print_range(-100, None)
+    # print_range(None, 10)
+    # print("...")
+    # i = int(len(names) / 2) - 5
+    # j = i + 10
+    # print_range(i, j)
+    # print("...")
+    # print_range(-100, None)
+    print_range(None, None)
 
     print("=" * 30 + " ====== === ======")
 
